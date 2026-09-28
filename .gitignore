@@ -1,0 +1,13 @@
+# .NET build artifacts
+[Bb]in/
+[Oo]bj/
+
+# IDE settings
+.vs/
+.idea/
+*.user
+*.suo
+
+# OS metadata
+Thumbs.db
+Desktop.ini
