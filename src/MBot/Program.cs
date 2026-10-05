@@ -1,3 +1,5 @@
+using MBot.TelegramBot;
+using MBot.Exceptions;
 using System.Text;
 using MBot.DataAccess;
 using MBot.Infrastructure.DataAccess;
@@ -42,6 +44,10 @@ internal static class Program
             ITelegramBotClient botClient = new ConsoleBotClient();
 
             botClient.StartReceiving(updateHandler);
+        }
+        catch (ExitSessionException)
+        {
+            return;
         }
         catch (Exception exception)
         {

@@ -1,3 +1,4 @@
+using MBot.Entities;
 using MBot.DataAccess;
 
 namespace MBot.Services;

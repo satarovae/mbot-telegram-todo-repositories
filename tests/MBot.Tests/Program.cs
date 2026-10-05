@@ -1,8 +1,11 @@
 using System.Reflection;
 using MBot;
 using MBot.DataAccess;
+using MBot.Entities;
+using MBot.Exceptions;
 using MBot.Infrastructure.DataAccess;
 using MBot.Services;
+using MBot.TelegramBot;
 using Otus.ToDoList.ConsoleBot;
 using Otus.ToDoList.ConsoleBot.Types;
 
@@ -41,6 +44,10 @@ internal static class Program
             ("Повторный /start не создаёт нового пользователя", RepeatedStartKeepsExistingUser),
             ("/help доступен до регистрации", HelpIsAvailableBeforeRegistration),
             ("/info доступен до регистрации", InfoIsAvailableBeforeRegistration),
+            ("/exit доступен до регистрации", ExitIsAvailableBeforeRegistration),
+            ("/exit завершает консольный цикл", ExitStopsConsoleLoop),
+            ("/exit корректно работает после регистрации", ExitAfterRegistration),
+            ("/exit нечувствителен к регистру и пробелам", ExitAllowsWhitespaceAndDifferentCase),
             ("Команды задач недоступны до регистрации", TaskCommandsAreBlockedBeforeRegistration),
             ("Команда /echo удалена", EchoCommandIsRemoved),
             ("/addtask принимает имя задачи в той же команде", AddTaskUsesInlineTaskName),
@@ -51,9 +58,9 @@ internal static class Program
             ("/removetask удаляет задачу по Id", RemoveTaskDeletesTaskById),
             ("Некорректный Id обрабатывается без падения", InvalidTaskIdIsHandled),
             ("Пользователь не может изменить чужую задачу", UserCannotModifyAnotherUsersTask),
-            ("/help содержит новые форматы команд", HelpContainsNewCommandFormats)
-            ,("/report выводит статистику", ReportDisplaysUserStats)
-            ,("/find выводит задачи по началу названия", FindDisplaysTasksByPrefix)
+            ("/help содержит новые форматы команд", HelpContainsNewCommandFormats),
+            ("/report выводит статистику", ReportDisplaysUserStats),
+            ("/find выводит задачи по началу названия", FindDisplaysTasksByPrefix)
         };
 
         var failures = 0;
@@ -502,6 +509,71 @@ internal static class Program
         AssertContains(context.BotClient.LastMessage, "не найдена у текущего пользователя");
     }
 
+    private static void ExitIsAvailableBeforeRegistration()
+    {
+        var context = CreateContext();
+        context.Handler.HandleUpdateAsync(context.BotClient, CreateUpdate(10, "guest", "/help"));
+        AssertContains(context.BotClient.LastMessage, "/exit");
+        AssertThrows<ExitSessionException>(() =>
+            context.Handler.HandleUpdateAsync(context.BotClient, CreateUpdate(10, "guest", "/exit")));
+        AssertContains(context.BotClient.LastMessage, "До свидания! Время текущего сеанса:");
+    }
+
+    private static void ExitStopsConsoleLoop()
+    {
+        var oldInput = Console.In;
+        var oldOutput = Console.Out;
+        using var input = new StringReader("/exit\n/start\n");
+        using var output = new StringWriter();
+        try
+        {
+            Console.SetIn(input);
+            Console.SetOut(output);
+            var context = CreateContext();
+            var counter = new CountingUpdateHandler(context.Handler);
+            AssertThrows<ExitSessionException>(() => new ConsoleBotClient().StartReceiving(counter));
+            AssertContains(output.ToString(), "До свидания! Время текущего сеанса:");
+            AssertEqual(1, counter.Calls, "Команды после /exit не должны выполняться.");
+        }
+        finally
+        {
+            Console.SetIn(oldInput);
+            Console.SetOut(oldOutput);
+        }
+    }
+
+    private static void ExitAfterRegistration()
+    {
+        var context = CreateContext();
+        Register(context, 10, "user");
+        AssertThrows<ExitSessionException>(() =>
+            context.Handler.HandleUpdateAsync(context.BotClient, CreateUpdate(10, "user", "/exit")));
+        AssertContains(context.BotClient.LastMessage, "До свидания! Время текущего сеанса:");
+    }
+
+    private static void ExitAllowsWhitespaceAndDifferentCase()
+    {
+        var oldInput = Console.In;
+        var oldOutput = Console.Out;
+        using var input = new StringReader("  /EXIT  \n/start\n");
+        using var output = new StringWriter();
+        try
+        {
+            Console.SetIn(input);
+            Console.SetOut(output);
+            var context = CreateContext();
+            var counter = new CountingUpdateHandler(context.Handler);
+            AssertThrows<ExitSessionException>(() => new ConsoleBotClient().StartReceiving(counter));
+            AssertContains(output.ToString(), "До свидания! Время текущего сеанса:");
+            AssertEqual(1, counter.Calls, "Команды после /EXIT не должны выполняться.");
+        }
+        finally
+        {
+            Console.SetIn(oldInput);
+            Console.SetOut(oldOutput);
+        }
+    }
+
     private static void HelpContainsNewCommandFormats()
     {
         var context = CreateContext();
@@ -656,6 +728,24 @@ internal static class Program
         ToDoService ToDoService,
         UpdateHandler Handler,
         FakeTelegramBotClient BotClient);
+
+    private sealed class CountingUpdateHandler : IUpdateHandler
+    {
+        private readonly IUpdateHandler _handler;
+
+        public CountingUpdateHandler(IUpdateHandler handler)
+        {
+            _handler = handler;
+        }
+
+        public int Calls { get; private set; }
+
+        public void HandleUpdateAsync(ITelegramBotClient botClient, Update update)
+        {
+            Calls++;
+            _handler.HandleUpdateAsync(botClient, update);
+        }
+    }
 
     private sealed class FakeTelegramBotClient : ITelegramBotClient
     {

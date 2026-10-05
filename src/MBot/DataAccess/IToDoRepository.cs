@@ -1,3 +1,4 @@
+using MBot.Entities;
 namespace MBot.DataAccess;
 
 /// <summary>
