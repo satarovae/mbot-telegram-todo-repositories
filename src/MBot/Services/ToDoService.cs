@@ -1,7 +1,7 @@
-using MBot.Entities;
-using MBot.Exceptions;
 using System.Globalization;
 using MBot.DataAccess;
+using MBot.Entities;
+using MBot.Exceptions;
 
 namespace MBot.Services;
 
@@ -16,6 +16,7 @@ public sealed class ToDoService : IToDoService
     private readonly IToDoRepository _repository;
     private readonly int _taskCountLimit;
     private readonly int _taskLengthLimit;
+    private readonly SemaphoreSlim _addLock = new(1, 1);
 
     public ToDoService(IToDoRepository repository, int taskCountLimit, int taskLengthLimit)
     {
@@ -34,56 +35,69 @@ public sealed class ToDoService : IToDoService
 
     public int TaskLengthLimit => _taskLengthLimit;
 
-    public IReadOnlyList<ToDoItem> GetAllByUserId(Guid userId)
+    public Task<IReadOnlyList<ToDoItem>> GetAllByUserIdAsync(Guid userId, CancellationToken ct)
     {
-        return _repository.GetAllByUserId(userId);
+        return _repository.GetAllByUserIdAsync(userId, ct);
     }
 
-    public IReadOnlyList<ToDoItem> GetActiveByUserId(Guid userId)
+    public Task<IReadOnlyList<ToDoItem>> GetActiveByUserIdAsync(Guid userId, CancellationToken ct)
     {
-        return _repository.GetActiveByUserId(userId);
+        return _repository.GetActiveByUserIdAsync(userId, ct);
     }
 
-    public IReadOnlyList<ToDoItem> Find(ToDoUser user, string namePrefix)
+    public Task<IReadOnlyList<ToDoItem>> FindAsync(
+        ToDoUser user,
+        string namePrefix,
+        CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(user);
         ValidateString(namePrefix);
         var prefix = namePrefix.Trim();
-        return _repository.Find(
+        return _repository.FindAsync(
             user.UserId,
-            item => item.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+            item => item.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase),
+            ct);
     }
 
-    public ToDoItem Add(ToDoUser user, string name)
+    public async Task<ToDoItem> AddAsync(ToDoUser user, string name, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(user);
         ValidateString(name);
-
         var taskName = name.Trim();
-        if (_repository.CountActive(user.UserId) >= _taskCountLimit)
-        {
-            throw new TaskCountLimitException(_taskCountLimit);
-        }
 
-        if (taskName.Length > _taskLengthLimit)
+        await _addLock.WaitAsync(ct);
+        try
         {
-            throw new TaskLengthLimitException(taskName.Length, _taskLengthLimit);
-        }
+            if (await _repository.CountActiveAsync(user.UserId, ct) >= _taskCountLimit)
+            {
+                throw new TaskCountLimitException(_taskCountLimit);
+            }
 
-        if (_repository.ExistsByName(user.UserId, taskName))
+            if (taskName.Length > _taskLengthLimit)
+            {
+                throw new TaskLengthLimitException(taskName.Length, _taskLengthLimit);
+            }
+
+            if (await _repository.ExistsByNameAsync(user.UserId, taskName, ct))
+            {
+                throw new DuplicateTaskException(taskName);
+            }
+
+            var item = new ToDoItem(user, taskName);
+            await _repository.AddAsync(item, ct);
+            return item;
+        }
+        finally
         {
-            throw new DuplicateTaskException(taskName);
+            _addLock.Release();
         }
-
-        var item = new ToDoItem(user, taskName);
-        _repository.Add(item);
-        return item;
     }
 
-    public void MarkCompleted(Guid id)
+    public async Task MarkCompletedAsync(Guid id, CancellationToken ct)
     {
-        var item = FindById(id);
-
+        var item = await FindByIdAsync(id, ct);
         if (item.State == ToDoItemState.Completed)
         {
             return;
@@ -91,13 +105,13 @@ public sealed class ToDoService : IToDoService
 
         item.State = ToDoItemState.Completed;
         item.StateChangedAt = DateTime.UtcNow;
-        _repository.Update(item);
+        await _repository.UpdateAsync(item, ct);
     }
 
-    public void Delete(Guid id)
+    public async Task DeleteAsync(Guid id, CancellationToken ct)
     {
-        _ = FindById(id);
-        _repository.Delete(id);
+        _ = await FindByIdAsync(id, ct);
+        await _repository.DeleteAsync(id, ct);
     }
 
     public int ParseAndValidateInt(string? str, int min, int max)
@@ -128,15 +142,9 @@ public sealed class ToDoService : IToDoService
         }
     }
 
-    private ToDoItem FindById(Guid id)
+    private async Task<ToDoItem> FindByIdAsync(Guid id, CancellationToken ct)
     {
-        var item = _repository.Get(id);
-
-        if (item is null)
-        {
-            throw new InvalidOperationException($"Задача с Id {id} не найдена.");
-        }
-
-        return item;
+        var item = await _repository.GetAsync(id, ct);
+        return item ?? throw new InvalidOperationException($"Задача с Id {id} не найдена.");
     }
 }

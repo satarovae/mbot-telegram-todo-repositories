@@ -1,4 +1,5 @@
 using MBot.Entities;
+
 namespace MBot.DataAccess;
 
 /// <summary>
@@ -6,21 +7,21 @@ namespace MBot.DataAccess;
 /// </summary>
 public interface IToDoRepository
 {
-    IReadOnlyList<ToDoItem> GetAllByUserId(Guid userId);
+    Task<IReadOnlyList<ToDoItem>> GetAllByUserIdAsync(Guid userId, CancellationToken ct);
 
-    IReadOnlyList<ToDoItem> GetActiveByUserId(Guid userId);
+    Task<IReadOnlyList<ToDoItem>> GetActiveByUserIdAsync(Guid userId, CancellationToken ct);
 
-    ToDoItem? Get(Guid id);
+    Task<ToDoItem?> GetAsync(Guid id, CancellationToken ct);
 
-    void Add(ToDoItem item);
+    Task AddAsync(ToDoItem item, CancellationToken ct);
 
-    void Update(ToDoItem item);
+    Task UpdateAsync(ToDoItem item, CancellationToken ct);
 
-    void Delete(Guid id);
+    Task DeleteAsync(Guid id, CancellationToken ct);
 
-    bool ExistsByName(Guid userId, string name);
+    Task<bool> ExistsByNameAsync(Guid userId, string name, CancellationToken ct);
 
-    int CountActive(Guid userId);
+    Task<int> CountActiveAsync(Guid userId, CancellationToken ct);
 
-    IReadOnlyList<ToDoItem> Find(Guid userId, Func<ToDoItem, bool> predicate);
+    Task<IReadOnlyList<ToDoItem>> FindAsync(Guid userId, Func<ToDoItem, bool> predicate, CancellationToken ct);
 }

@@ -1,9 +1,9 @@
-using MBot.TelegramBot;
-using MBot.Exceptions;
 using System.Text;
 using MBot.DataAccess;
+using MBot.Exceptions;
 using MBot.Infrastructure.DataAccess;
 using MBot.Services;
+using MBot.TelegramBot;
 using Otus.ToDoList.ConsoleBot;
 
 namespace MBot;
@@ -19,44 +19,60 @@ internal static class Program
 
             Console.WriteLine("Введите максимально допустимое количество задач");
             var taskCountLimitInput = Console.ReadLine();
-
-            if (!int.TryParse(taskCountLimitInput, out var taskCountLimit))
-            {
-                throw new ArgumentException(
-                    $"Введите целое число от {ToDoService.MinimumLimit} до {ToDoService.MaximumLimit}.");
-            }
-
             Console.WriteLine("Введите максимально допустимую длину задачи");
             var taskLengthLimitInput = Console.ReadLine();
 
-            if (!int.TryParse(taskLengthLimitInput, out var taskLengthLimit))
-            {
-                throw new ArgumentException(
-                    $"Введите целое число от {ToDoService.MinimumLimit} до {ToDoService.MaximumLimit}.");
-            }
+            var validator = new ToDoService(new InMemoryToDoRepository(), 1, 1);
+            var taskCountLimit = validator.ParseAndValidateInt(
+                taskCountLimitInput,
+                ToDoService.MinimumLimit,
+                ToDoService.MaximumLimit);
+            var taskLengthLimit = validator.ParseAndValidateInt(
+                taskLengthLimitInput,
+                ToDoService.MinimumLimit,
+                ToDoService.MaximumLimit);
 
             IUserRepository userRepository = new InMemoryUserRepository();
             IToDoRepository toDoRepository = new InMemoryToDoRepository();
             IUserService userService = new UserService(userRepository);
             IToDoService toDoService = new ToDoService(toDoRepository, taskCountLimit, taskLengthLimit);
             IToDoReportService reportService = new ToDoReportService(toDoRepository);
-            IUpdateHandler updateHandler = new UpdateHandler(userService, toDoService, reportService);
             ITelegramBotClient botClient = new ConsoleBotClient();
 
-            botClient.StartReceiving(updateHandler);
+            using var cts = new CancellationTokenSource();
+            var updateHandler = new UpdateHandler(userService, toDoService, reportService, cts.Cancel);
+            var originalInput = Console.In;
+            var inputCoordinator = new ConsoleInputCoordinator(originalInput, cts.Token);
+            updateHandler.UpdateProcessed += inputCoordinator.CompleteMessage;
+            ConsoleCancelEventHandler interruptHandler = (_, eventArgs) =>
+            {
+                eventArgs.Cancel = true;
+                cts.Cancel();
+            };
+
+            try
+            {
+                Console.SetIn(inputCoordinator);
+                Console.CancelKeyPress += interruptHandler;
+                botClient.StartReceiving(updateHandler, cts.Token);
+            }
+            finally
+            {
+                Console.CancelKeyPress -= interruptHandler;
+                Console.SetIn(originalInput);
+                updateHandler.UpdateProcessed -= inputCoordinator.CompleteMessage;
+            }
         }
-        catch (ExitSessionException)
+        catch (OperationCanceledException)
         {
             return;
         }
+        catch (ArgumentException exception)
+        {
+            Console.WriteLine(exception.Message);
+        }
         catch (Exception exception)
         {
-            if (exception is ArgumentException)
-            {
-                Console.WriteLine(exception.Message);
-                return;
-            }
-
             Console.WriteLine("Произошла непредвиденная ошибка:");
             Console.WriteLine($"Type: {exception.GetType().FullName}");
             Console.WriteLine($"Message: {exception.Message}");

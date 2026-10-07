@@ -1,10 +1,10 @@
-using MBot.Entities;
 using MBot.DataAccess;
+using MBot.Entities;
 
 namespace MBot.Services;
 
 /// <summary>
-/// Сервис формирования статистики задач на основе репозитория.
+/// Формирует статистику задач на основе репозитория.
 /// </summary>
 public sealed class ToDoReportService : IToDoReportService
 {
@@ -15,9 +15,11 @@ public sealed class ToDoReportService : IToDoReportService
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     }
 
-    public (int total, int completed, int active, DateTime generatedAt) GetUserStats(Guid userId)
+    public async Task<(int total, int completed, int active, DateTime generatedAt)> GetUserStatsAsync(
+        Guid userId,
+        CancellationToken ct)
     {
-        var items = _repository.GetAllByUserId(userId);
+        var items = await _repository.GetAllByUserIdAsync(userId, ct);
         var completed = items.Count(item => item.State == ToDoItemState.Completed);
         var active = items.Count(item => item.State == ToDoItemState.Active);
         return (items.Count, completed, active, DateTime.UtcNow);

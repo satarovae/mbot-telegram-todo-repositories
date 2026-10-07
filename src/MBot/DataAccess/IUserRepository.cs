@@ -1,4 +1,5 @@
 using MBot.Entities;
+
 namespace MBot.DataAccess;
 
 /// <summary>
@@ -6,9 +7,9 @@ namespace MBot.DataAccess;
 /// </summary>
 public interface IUserRepository
 {
-    ToDoUser? GetUser(Guid userId);
+    Task<ToDoUser?> GetUserAsync(Guid userId, CancellationToken ct);
 
-    ToDoUser? GetUserByTelegramUserId(long telegramUserId);
+    Task<ToDoUser?> GetUserByTelegramUserIdAsync(long telegramUserId, CancellationToken ct);
 
-    void Add(ToDoUser user);
+    Task AddAsync(ToDoUser user, CancellationToken ct);
 }

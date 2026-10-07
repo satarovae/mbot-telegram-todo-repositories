@@ -1,5 +1,5 @@
-using MBot.Entities;
 using MBot.DataAccess;
+using MBot.Entities;
 
 namespace MBot.Infrastructure.DataAccess;
 
@@ -11,26 +11,28 @@ public sealed class InMemoryUserRepository : IUserRepository
     private readonly List<ToDoUser> _users = new();
     private readonly object _syncRoot = new();
 
-    public ToDoUser? GetUser(Guid userId)
+    public Task<ToDoUser?> GetUserAsync(Guid userId, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         lock (_syncRoot)
         {
-            return _users.FirstOrDefault(user => user.UserId == userId);
+            return Task.FromResult(_users.FirstOrDefault(user => user.UserId == userId));
         }
     }
 
-    public ToDoUser? GetUserByTelegramUserId(long telegramUserId)
+    public Task<ToDoUser?> GetUserByTelegramUserIdAsync(long telegramUserId, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         lock (_syncRoot)
         {
-            return _users.FirstOrDefault(user => user.TelegramUserId == telegramUserId);
+            return Task.FromResult(_users.FirstOrDefault(user => user.TelegramUserId == telegramUserId));
         }
     }
 
-    public void Add(ToDoUser user)
+    public Task AddAsync(ToDoUser user, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(user);
-
         lock (_syncRoot)
         {
             if (_users.Any(existing => existing.UserId == user.UserId))
@@ -45,5 +47,7 @@ public sealed class InMemoryUserRepository : IUserRepository
 
             _users.Add(user);
         }
+
+        return Task.CompletedTask;
     }
 }

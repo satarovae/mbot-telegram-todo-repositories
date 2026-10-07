@@ -1,43 +1,59 @@
-using MBot.Entities;
 using MBot.DataAccess;
+using MBot.Entities;
 
 namespace MBot.Services;
 
 /// <summary>
-/// Хранит зарегистрированных пользователей в памяти приложения.
+/// Регистрирует пользователей и предоставляет данные о регистрации.
 /// </summary>
 public sealed class UserService : IUserService
 {
     private readonly IUserRepository _userRepository;
+    private readonly SemaphoreSlim _registrationLock = new(1, 1);
 
     public UserService(IUserRepository userRepository)
     {
         _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
     }
 
-    public ToDoUser RegisterUser(long telegramUserId, string telegramUserName)
+    public async Task<ToDoUser> RegisterUserAsync(
+        long telegramUserId,
+        string telegramUserName,
+        CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(telegramUserName))
         {
-            throw new ArgumentException("Имя пользователя не должно быть пустым или состоять только из пробелов.", nameof(telegramUserName));
+            throw new ArgumentException(
+                "Имя пользователя не должно быть пустым или состоять только из пробелов.",
+                nameof(telegramUserName));
         }
 
-        var existingUser = _userRepository.GetUserByTelegramUserId(telegramUserId);
-        if (existingUser is not null)
+        await _registrationLock.WaitAsync(ct);
+        try
         {
-            return existingUser;
-        }
+            var existingUser = await _userRepository.GetUserByTelegramUserIdAsync(telegramUserId, ct);
+            if (existingUser is not null)
+            {
+                return existingUser;
+            }
 
-        var user = new ToDoUser(telegramUserName.Trim())
+            var user = new ToDoUser(telegramUserName.Trim())
+            {
+                TelegramUserId = telegramUserId
+            };
+
+            await _userRepository.AddAsync(user, ct);
+            return user;
+        }
+        finally
         {
-            TelegramUserId = telegramUserId
-        };
-        _userRepository.Add(user);
-        return user;
+            _registrationLock.Release();
+        }
     }
 
-    public ToDoUser? GetUser(long telegramUserId)
+    public Task<ToDoUser?> GetUserAsync(long telegramUserId, CancellationToken ct)
     {
-        return _userRepository.GetUserByTelegramUserId(telegramUserId);
+        return _userRepository.GetUserByTelegramUserIdAsync(telegramUserId, ct);
     }
 }

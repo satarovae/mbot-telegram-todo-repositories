@@ -1,0 +1,27 @@
+name: MBot build and checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Restore
+        run: dotnet restore MBot.sln
+      - name: Build
+        run: dotnet build MBot.sln --no-restore --configuration Release --warnaserror
+      - name: Regression checks
+        run: dotnet run --project tests/MBot.Tests/MBot.Tests.csproj --configuration Release --no-build
+      - name: Console smoke test
+        shell: bash
+        run: |
+          printf '10\n100\n/start\n/addtask Test\n/report\n/exit\n' | dotnet run --project src/MBot/MBot.csproj --configuration Release --no-build >bot-output.txt
+          grep -q 'До свидания!' bot-output.txt
+          grep -q 'Бот остановлен' bot-output.txt
+          grep -q 'Статистика по задачам' bot-output.txt

@@ -1,4 +1,5 @@
 using MBot.Entities;
+
 namespace MBot.Services;
 
 /// <summary>
@@ -6,7 +7,7 @@ namespace MBot.Services;
 /// </summary>
 public interface IUserService
 {
-    ToDoUser RegisterUser(long telegramUserId, string telegramUserName);
+    Task<ToDoUser> RegisterUserAsync(long telegramUserId, string telegramUserName, CancellationToken ct);
 
-    ToDoUser? GetUser(long telegramUserId);
+    Task<ToDoUser?> GetUserAsync(long telegramUserId, CancellationToken ct);
 }

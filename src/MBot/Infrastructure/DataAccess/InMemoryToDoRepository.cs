@@ -1,5 +1,5 @@
-using MBot.Entities;
 using MBot.DataAccess;
+using MBot.Entities;
 
 namespace MBot.Infrastructure.DataAccess;
 
@@ -11,37 +11,41 @@ public sealed class InMemoryToDoRepository : IToDoRepository
     private readonly List<ToDoItem> _items = new();
     private readonly object _syncRoot = new();
 
-    public IReadOnlyList<ToDoItem> GetAllByUserId(Guid userId)
+    public Task<IReadOnlyList<ToDoItem>> GetAllByUserIdAsync(Guid userId, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         lock (_syncRoot)
         {
-            return _items.Where(item => item.User.UserId == userId).ToList().AsReadOnly();
+            return Task.FromResult<IReadOnlyList<ToDoItem>>(
+                _items.Where(item => item.User.UserId == userId).ToList().AsReadOnly());
         }
     }
 
-    public IReadOnlyList<ToDoItem> GetActiveByUserId(Guid userId)
+    public Task<IReadOnlyList<ToDoItem>> GetActiveByUserIdAsync(Guid userId, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         lock (_syncRoot)
         {
-            return _items
+            return Task.FromResult<IReadOnlyList<ToDoItem>>(_items
                 .Where(item => item.User.UserId == userId && item.State == ToDoItemState.Active)
                 .ToList()
-                .AsReadOnly();
+                .AsReadOnly());
         }
     }
 
-    public ToDoItem? Get(Guid id)
+    public Task<ToDoItem?> GetAsync(Guid id, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         lock (_syncRoot)
         {
-            return _items.FirstOrDefault(item => item.Id == id);
+            return Task.FromResult(_items.FirstOrDefault(item => item.Id == id));
         }
     }
 
-    public void Add(ToDoItem item)
+    public Task AddAsync(ToDoItem item, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(item);
-
         lock (_syncRoot)
         {
             if (_items.Any(existing => existing.Id == item.Id))
@@ -51,12 +55,14 @@ public sealed class InMemoryToDoRepository : IToDoRepository
 
             _items.Add(item);
         }
+
+        return Task.CompletedTask;
     }
 
-    public void Update(ToDoItem item)
+    public Task UpdateAsync(ToDoItem item, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(item);
-
         lock (_syncRoot)
         {
             var index = _items.FindIndex(existing => existing.Id == item.Id);
@@ -67,10 +73,13 @@ public sealed class InMemoryToDoRepository : IToDoRepository
 
             _items[index] = item;
         }
+
+        return Task.CompletedTask;
     }
 
-    public void Delete(Guid id)
+    public Task DeleteAsync(Guid id, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         lock (_syncRoot)
         {
             var removed = _items.RemoveAll(item => item.Id == id);
@@ -79,39 +88,43 @@ public sealed class InMemoryToDoRepository : IToDoRepository
                 throw new InvalidOperationException($"Задача с Id {id} не найдена.");
             }
         }
+
+        return Task.CompletedTask;
     }
 
-    public bool ExistsByName(Guid userId, string name)
+    public Task<bool> ExistsByNameAsync(Guid userId, string name, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
-
         lock (_syncRoot)
         {
-            return _items.Any(item =>
+            return Task.FromResult(_items.Any(item =>
                 item.User.UserId == userId &&
-                string.Equals(item.Name, name, StringComparison.Ordinal));
+                string.Equals(item.Name, name, StringComparison.Ordinal)));
         }
     }
 
-    public int CountActive(Guid userId)
+    public Task<int> CountActiveAsync(Guid userId, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         lock (_syncRoot)
         {
-            return _items.Count(item => item.User.UserId == userId && item.State == ToDoItemState.Active);
+            return Task.FromResult(_items.Count(item =>
+                item.User.UserId == userId && item.State == ToDoItemState.Active));
         }
     }
 
-    public IReadOnlyList<ToDoItem> Find(Guid userId, Func<ToDoItem, bool> predicate)
+    public Task<IReadOnlyList<ToDoItem>> FindAsync(Guid userId, Func<ToDoItem, bool> predicate, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(predicate);
-
         lock (_syncRoot)
         {
-            return _items
+            return Task.FromResult<IReadOnlyList<ToDoItem>>(_items
                 .Where(item => item.User.UserId == userId)
                 .Where(predicate)
                 .ToList()
-                .AsReadOnly();
+                .AsReadOnly());
         }
     }
 }
